@@ -1,10 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using Serilog;
 
-namespace DataAccessLibrary.Logging
+namespace DataAccessLibrary.Logging;
+
+public static class LoggingService
 {
-    internal class LoggingService
+    public static Serilog.ILogger Logger { get; private set; }
+
+    public static void Initialize(string logFilePath = "logs/log-.txt")
     {
+        Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .WriteTo.Console()
+            .WriteTo.File(logFilePath, rollingInterval: RollingInterval.Day)
+            .CreateLogger();
     }
 }
