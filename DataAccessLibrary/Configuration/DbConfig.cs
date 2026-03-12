@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿namespace DataAccessLibrary.Configuration;
 
-namespace DataAccessLibrary.Configuration
+public class DbConfig
 {
-    internal class DbConfig
-    {
-    }
+    public string ConnectionString { get; set; }
 }
