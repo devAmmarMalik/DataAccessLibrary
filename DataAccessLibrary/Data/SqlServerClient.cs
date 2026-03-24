@@ -24,8 +24,7 @@ public class SqlServerClient
 
             using SqlDataReader read = command.ExecuteReader();
             retTable.Load(read);
-
-
+            LoggingService.Initialize(@"f:\ammar\");
             LoggingService.Logger.Information($"Query Successful with {retTable.Rows.Count} rows");
         }
         catch (Exception ex) {

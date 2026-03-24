@@ -1,0 +1,588 @@
+*************************************************************************************************************************************************************************************************
+*    DATE: 06.26.2025
+* PROJECT: Export data from WMS to Data lake
+*  AUTHOR: Ammar S Malik 
+* DETAILS: Two files will be created. First file will have data in it. Then once it has been created, there will be another 
+*		   file will be created which will be empty, with the same name but different extension. 
+*		   UTC conversion is added to the code. Below are the tests to update the data
+*				* Test UTC DateTime conversion
+*				*dDateTime = date(year(date()), 4, 1)
+*				*messagebox(getDateTime(dDateTime, "+3"))
+*				*dDateTime = datetime(year(date()), 4, 1, 22, 20, 30)
+*				*messagebox(dDateTime)
+*				*messagebox(getDateTime(dDateTime, "+4"))
+*				*dDateTime = datetime(year(date()), 4, 1, 2, 20, 30)
+*				*messagebox(dDateTime)
+*				*messagebox(getDateTime(dDateTime, "-4"))
+*
+*			Added a flag to see if we need Date Only or we need date time. Default is false
+** End Tests
+*  For testing 
+*		messagebox(getDateTime(date(year(date()), 7, 29), "-4"))
+*		messagebox(getDateTime(datetime(year(date()), 7, 29, 21, 09, 03), "-4"))	&& 2025-07-29 21:09:03.000
+*		messagebox(getDateTime(datetime(year(date()), 7, 29, 02, 09, 03), "-4"))	&& 2025-07-29 21:09:03.000
+*  TO RUN: do M:\DEV\PRG\DL_ExportTFSCustomer with "f:\ammar\projects\DL_Export\"
+*		 : Temporary File to track when each file was created so that we do not send all but we send what has changed
+*		 : Temp file: f:\exe\dl_ExportLog.csv
+*		 : No temp file. Just go 10 days before the day we are running it on
+*************************************************************************************************************************************************************************************************
+
+parameters cExportFolder
+close tables all
+public lExportAllData, nNoOfDaysPrior, lUseDateRange
+
+if type('cExportFolder') = 'L'
+	cExportFolder = "f:\ammar\projects\DL_Export\"
+endif 
+
+lExportAllData = .f.		&& True to export complete data set, False to go XX days before 
+lUseDateRange  = .t.		&& TRUE If we need to run a date range, False if we want days before today
+nNoOfDaysPrior = 10 		&& Number of days to go back and get that data
+
+** Daylight saving start and end date
+dDSTStartDate  = date(year(date()), 11, 2)
+dDSTEndDate    = date(year(date()), 3, 9)
+
+lAtleastOneRecExported = .F.
+if lUseDateRange then
+	****************************************** For Date Range to access data, use statements below *********************************************************************************************
+	cDateFrom = "{"+dtoc(date(2024,2,21))+"}"	&& Date range, from
+	cDateTo   = "{"+dtoc(date(2024,2,29))+"}"	&& Date range, to
+	cfilter = " (adddt >= " + cDateFrom + " and adddt <= " + cDateTo + ") or (updatedt >= " + cDateFrom + " and updatedt <= " + cDateTo + ")  "
+
+else lUseDateRange
+	******************************************** For last xx days from today, use statements below *********************************************************************************************
+	cDateFilter = "{"+dtoc(date()-nNoOfDaysPrior)+"}"	&& 10 days before when we are exporting 
+	cfilter = " (adddt >= " + cDateFilter + " or updatedt >= " + cDateFilter + ")"		&& Last 10 days filter
+
+endif lUseDateRange
+
+
+*************************************************************************************************************************************************************************************************
+wait window "Exporting Customer data" nowait 
+
+* filename and file path to create export file
+cTopic		= "CUSTOMER"
+lAtleastOneRecExported = .F.
+cFileName   = "tfscustomer_fox_"+alltrim(str(year(date())))+padl(alltrim(str(month(date()))), 2, '0')+padl(alltrim(str(day(date()))), 2, '0')+"_"+strtran(time(), ':', '')
+cExportFile = addbs(cExportFolder) + cFileName
+
+xsqlexec("select *, space(30) as Officeloc, space(10) as TimeConvToUTC from account where inactive = 0 order by accountid","xAcc",,"qq")
+select xAcc.* from xAcc into cursor xAcc readwrite 
+scan 
+	cOffice = '-----'
+	cTimeConvToUTC = '0'
+	do case
+	   case xAcc.njinven
+	   		cOffice = 'CARTERET'
+			cTimeConvToUTC = '+4'
+	   case xAcc.cainven
+	   		cOffice = 'SAN PEDRO'
+			cTimeConvToUTC = '+8'
+	   case xAcc.mlinven
+	   		cOffice = 'MIRA LOMA'
+			cTimeConvToUTC = '+3'
+	   case xAcc.flinven
+	   		cOffice = 'MIAMI'
+			cTimeConvToUTC = '+4'
+	   case xAcc.kyinven
+	   		cOffice = 'LOUISVILLE'
+			cTimeConvToUTC = '+4'
+	   case xAcc.ddinven
+	   		cOffice = 'CARSON'
+			cTimeConvToUTC = '+3'
+*	   case xAcc.
+*	   		cOffice = 'TFS'
+*			cTimeConvToUTC = '0'
+	   case xAcc.ddinven
+	   		cOffice = 'POLA'
+			cTimeConvToUTC = '-2'
+	   case xAcc.eeinven
+	   		cOffice = 'EDISON 1'
+			cTimeConvToUTC = '+4'
+	   case xAcc.riinven
+	   		cOffice = 'EDISON 2'
+			cTimeConvToUTC = '+4'
+	   case xAcc.xxinven
+	   		cOffice = 'EDISON 3'
+			cTimeConvToUTC = '+4'
+*	   case xAcc.office = "F"
+*	   		cOffice = 'EDISON MJ'
+*			cTimeConvToUTC = '+4'
+	   case xAcc.ssinven
+	   		cOffice = 'SAVANNAH'
+			cTimeConvToUTC = '+4'
+*	   case xAcc.
+*	   		cOffice = 'SAVANNAH MJ'
+*			cTimeConvToUTC = '+4'
+	   case xAcc.oninven
+	   		cOffice = 'ONTARIO'
+			cTimeConvToUTC = '+4'
+	   case xAcc.hhinven
+	   		cOffice = 'CHINO'
+			cTimeConvToUTC = '+3'
+	   otherwise
+	   		cOffice = '-----'
+			cTimeConvToUTC = '0'
+	endcase
+	replace Officeloc with cOffice, TimeConvToUTC with cTimeConvToUTC in 'xAcc'
+endscan
+
+if lExportAllData then 
+	exec("select xAcc.* from xAcc into cursor crAllAccounts readwrite")
+else lExportAllData 
+	exec("select xAcc.* from xAcc where "+cfilter+" into cursor crAllAccounts readwrite")
+endif lExportAllData 
+
+if reccount('crAllAccounts') > 0 then 
+	_mainFile = Fcreate(cExportFile+".txt")
+	fputs(_mainFile,"facility|system_id|tfs_id|trading_partner_id|master_cust_id|cust_id|cust_name|cust_add1|cust_add2|cust_add3|cust_city|cust_state|cust_zip|cust_country|cust_contact_name|cust_contact_phone")
+	select('crAllAccounts')
+	scan 
+		cOffice = crAllAccounts.Officeloc
+		if cOffice <> '-----' and !Emptynul(acctname) and accountid > 0 then 
+			fputs(_mainFile, cOffice+"|"+alltrim(str(accountid))+"||||"+alltrim(str(accountid))+"|"+alltrim(acctname)+"|"+alltrim(address)+"|||"+alltrim(city)+"|"+alltrim(state)+"|"+alltrim(zip)+"|||")
+			lAtleastOneRecExported = .T.
+		endif cOffice <> '-----' and !Emptynul(acctname) and accountid > 0
+	endscan 
+	Fclose(_mainFile)
+
+	createSecondFile(cExportFile)
+endif reccount('crAllAccounts') > 0
+
+** Create a list of all valid accounts. These accounts will be exported for all the corresponding data 
+select distinct accountid, Officeloc, TimeConvToUTC from xAcc where Officeloc <> '-----' and !Emptynul(acctname) and accountid > 0 into cursor crValidAccounts
+cTotalAccounts = alltrim(str(reccount('crValidAccounts')))
+use in select('crAllAccounts')
+
+*************************************************************************************************************************************************************************************************
+wait window "Exporting Product Master Data" nowait 
+cTopic = "PRODUCT"
+lAtleastOneRecExported = .F.
+
+* filename and file path to create export file
+cFileName   = "productmaster_fox_"+alltrim(str(year(date())))+padl(alltrim(str(month(date()))), 2, '0')+padl(alltrim(str(day(date()))), 2, '0')+"_"+strtran(time(), ':', '')
+cExportFile = addbs(cExportFolder) + cFileName
+_mainFile   = Fcreate(cExportFile+".txt")
+
+** Header information 
+fputs(_mainFile, "facility|system_id|cust_id|tsi_product_code|upc_code|description|customer_product_code|style|color|size|dim|lbl|lot_tracked|serial_tracked|category|product_class|product_type|product_group|"+;
+				  "cost|nmfc_code|nmfc_class_code|ppk_indicator|master_pack_qty|inner_pack_qty|sub_inner_pack_qty|country_of_origin|case_length|case_width|case_height|case_weight|unit_length|unit_width|"+;
+				  "unit_height|unit_weight|is_supply")
+
+select('crValidAccounts')
+scan 
+	cAccCounter = alltrim(str(recno('crValidAccounts')))
+	** Get data for this account
+	if lExportAllData then 
+		xsqlexec("select * from upcmast where accountid = "+transform(crValidAccounts.accountid)+" order by accountid","xUpcmast",,"wh")
+	else
+		xsqlexec("select * from upcmast where accountid = "+transform(crValidAccounts.accountid)+ " and " + cfilter +" order by accountid","xUpcmast",,"wh")
+	endif 
+	cOutTotalRec = alltrim(str(reccount('xUpcmast')))
+	select('xUpcmast')
+	scan 
+		wait window "Product Master Processing " + transform(xUpcmast.accountid) + " total accounts " + cTotalAccounts + " [" + cAccCounter + ": " + alltrim(str(recno('xUpcmast'))) + " / "  + cOutTotalRec + "]" nowait
+		
+		cOffice  = alltrim(crValidAccounts.Officeloc)
+		lclength = getmemodata("info","LENGTH")
+		lcwidth  = getmemodata("info","WIDTH")
+		lcheight = getmemodata("info","HEIGHT")
+		
+		lclength = iif(lclength="NA", "0", iif(emptynul(lclength), "0", lclength))
+		lcwidth  = iif(lcwidth="NA", "0", iif(emptynul(lcwidth), "0", lcwidth))
+		lcheight = iif(lcheight="NA", "0", iif(emptynul(lcheight), "0", lcheight))
+		
+*		lcDescrip = strtran(strtran(strtran(alltrim(xUpcmast.descrip), '"', ''), "'", ""), chr(10), "")
+		lcDescrip = cleanText(xUpcmast.descrip)
+		
+		fputs(_mainFile, cOffice+"|"+transform(xUpcmast.accountid)+"|"+transform(xUpcmast.accountid)+"|NA|"+alltrim(xUpcmast.upc)+"|"+lcDescrip+"||"+alltrim(xUpcmast.style)+"|"+;
+						 alltrim(xUpcmast.color)+"|"+alltrim(xUpcmast.id)+"|"+alltrim(transform(xUpcmast.cube))+ "||0|0|||"+alltrim(xUpcmast.itemtype)+"||0|||0|0|0|0||"+;
+						 lclength+"|"+iif(lcwidth="NA", "0", lcwidth)+"|"+iif(lcheight="NA", "0", lcheight)+"|"+alltrim(transform(xUpcmast.weight))+"|0|0|0|0|0")
+		
+		lAtleastOneRecExported = .T.
+	endscan 
+	use in select('xUpcmast')
+select('crValidAccounts')
+endscan && crValidAccounts
+
+Fclose(_mainFile)
+
+if !lAtleastOneRecExported then 
+	** Remove the file if there was not a single record added
+	delete file (cExportFile)
+else !lAtleastOneRecExported
+	createSecondFile(cExportFile)
+endif lAtleastOneRecExported
+
+
+*************************************************************************************************************************************************************************************************
+wait window "Exporting Shipment Header Data" nowait 
+cTopic = "SHIPMENT HEADER"
+lAtleastOneRecExported = .F.
+
+* filename and file path to create export file
+cFileName   	= "shipmentheader_fox_"+alltrim(str(year(date())))+padl(alltrim(str(month(date()))), 2, '0')+padl(alltrim(str(day(date()))), 2, '0')+"_"+strtran(time(), ':', '')
+cExportFile 	= addbs(cExportFolder) + cFileName
+_mainFile   	= Fcreate(cExportFile+".txt")
+
+cFileName   	= "shipmentdetail_fox_"+alltrim(str(year(date())))+padl(alltrim(str(month(date()))), 2, '0')+padl(alltrim(str(day(date()))), 2, '0')+"_"+strtran(time(), ':', '')
+cExportDtlFile 	= addbs(cExportFolder) + cFileName
+_detailFile 	= Fcreate(cExportDtlFile+".txt")
+
+cFileName   	= "cartons_fox_"+alltrim(str(year(date())))+padl(alltrim(str(month(date()))), 2, '0')+padl(alltrim(str(day(date()))), 2, '0')+"_"+strtran(time(), ':', '')
+cExportCTNFile 	= addbs(cExportFolder) + cFileName
+_cartonsFile	= Fcreate(cExportCTNFile +".txt")
+
+cFileName   	= "cancelheader_fox_"+alltrim(str(year(date())))+padl(alltrim(str(month(date()))), 2, '0')+padl(alltrim(str(day(date()))), 2, '0')+"_"+strtran(time(), ':', '')
+cExportCancFile	= addbs(cExportFolder) + cFileName
+_cancelOdrFile	= Fcreate(cExportCancFile +".txt")
+
+cFileName   	= "canceldetail_fox_"+alltrim(str(year(date())))+padl(alltrim(str(month(date()))), 2, '0')+padl(alltrim(str(day(date()))), 2, '0')+"_"+strtran(time(), ':', '')
+cExportCDtlFile	= addbs(cExportFolder) + cFileName
+_cancelDtlFile	= Fcreate(cExportCDtlFile +".txt")
+
+** Header information 
+fputs(_mainFile, "facility|cust_id|order_number|customer_order_number|web_order_number|ship_datetime|order_recv_datetime|allocation_start_date|work_order_id|po_number|master_bol|bol_number|pro_number|routing_appt_id|" + ;
+	   "routing_date|dc_number|store_number|channel|ship_to_name|ship_to_addr1|ship_to_addr2|ship_to_addr3|ship_to_city|ship_to_state|ship_to_zip|ship_to_country|mark_for_name|mark_for_addr1|mark_for_addr2|"+ ;
+	   "mark_for_addr3|mark_for_city|mark_for_state|mark_for_zip|mark_for_country|client_customer_number|bill_to_name|bill_to_addr1|bill_to_addr2|bill_to_addr3|bill_to_city|bill_to_state|bill_to_zip|bill_to_country|"+ ;
+	   "is_small_parcel|ship_via_scac|service_level|freight_terms|start_date|cancel_date|routing_pickup_appt_date|no_show_flag|number_lines|total_qty_ordered|total_qty_allocated|total_qty_shipped|"+ ;
+	   "total_ctns_shipped|order_type|order_uom|total_weight|total_volume|is_floor_loaded|edi_945_file_id|edi_945_datetime|ready_datetime|wave_type")
+	   
+** Details information
+fputs(_detailFile,"order_number|cust_id|tsi_product_code|upc_code|gtin_number|style|color|size|dim|lbl|lot_number|serial_number|order_qty|alloc_qty|ship_qty|uom|pack_size|retail_prod_id|cost|order_line_number|cust_po_line_number")
+
+** Cartons information
+fputs(_cartonsFile,"order_number|facility|cust_id|carton_id|tsi_product_code|product_code_qty|tracking_number|case_length|case_width|case_height|case_weight|small_pkg_charge|return_tracking_number|order_line_number|cust_po_line_number|lot_number|serial_number")
+
+** Cancel Orders information
+fputs(_cancelOdrFile,"facility|order_number|cancel_datetime|order_recv_datetime|po_number|cust_id|dc_number|store_number|channel|ship_to_name|ship_to_addr1|ship_to_addr2|ship_to_addr3|ship_to_city|ship_to_state|ship_to_zip|ship_to_country|mark_for_name|"+;
+		"mark_for_addr1|mark_for_addr2|mark_for_addr3|mark_for_city|mark_for_state|mark_for_zip|mark_for_country|bill_to_name|bill_to_addr1|bill_to_addr2|bill_to_addr3|bill_to_city|bill_to_state|bill_to_zip|bill_to_country|contact|phone|start_date|cancel_date|"+;
+		"cancel_reason|cancel_by|number_lines|total_units|edi_orig_ord_data_file_id")
+		
+** Cancel Orders Details
+fputs(_cancelDtlFile,"order_number|product_code|upc_code|gtin_number|style|color|size|dim|lbl|cancel_qty|uom|cost|order_line_number|cust_po_line_number")
+
+select('crValidAccounts')
+scan 
+	cAccCounter = alltrim(str(recno('crValidAccounts')))
+	** Get data for this account
+	if lExportAllData then 
+		xsqlexec("select * from outship where accountid = "+transform(crValidAccounts.accountid)+" order by accountid","xOutship",,"wh")
+	else lExportAllData 
+		xsqlexec("select * from outship where accountid = "+transform(crValidAccounts.accountid)+ " and " + cfilter +" order by accountid","xOutship",,"wh")
+	endif lExportAllData 
+
+	** Filter out those records which do not have csz meaning City, State and Zip code. These are not valid OBD orders
+	select * from xOutship where !emptynul(csz) and !emptynul(cnee_ref) and !emptynul(scac) into cursor xOutship readwrite 
+
+	cOutTotalRec = alltrim(str(reccount('xOutship')))
+	select('xOutship')
+	scan 
+		wait window "Shipment Orders Processing " + transform(xOutship.accountid) + " total accounts " + cTotalAccounts + " [ " + cAccCounter + " : " + alltrim(str(recno('xOutship'))) + " / "  + cOutTotalRec + "]" nowait
+
+		xsqlexec("select * from outdet  where outshipid = " + transform(xOutship.outshipid),"xOutdet",,"wh")
+		xsqlexec("select * from ptorig  where accountid = "+transform(crValidAccounts.accountid)+" and ship_ref = '" + alltrim(xOutship.ship_ref) + "'","xPtOrig",,"wh")
+		xsqlexec("select * from ptdetorig  where accountid = "+transform(crValidAccounts.accountid)+" and ship_ref = '" + alltrim(xOutship.ship_ref) + "'","xPtDetOrig",,"wh")
+		xsqlexec("select * from editrigger where accountid = "+transform(crValidAccounts.accountid)+" and ship_ref = '" + alltrim(xOutship.ship_ref) + "'","xEdiTrigger",,"stuff")
+		
+		xsqlexec("select * from cartons where outshipid = " + transform(xOutship.outshipid) + " and ship_ref = '" + alltrim(xOutship.ship_ref) + "'","x1Cartons",,"pickpack")
+		select * from x1Cartons group by UCC into cursor xCartons
+
+		select('xOutdet')	
+		index on outshipid tag outshipid
+		select('xPtOrig')
+		index on ship_ref tag shipref
+		select('xPtDetOrig')
+		index on style tag style
+		select('xEdiTrigger')
+		index on ship_ref tag shipref
+
+		cOffice  = alltrim(crValidAccounts.Officeloc)
+		
+		** [PTORIG Data]
+		if seek(xOutship.ship_ref, 'xPtOrig', 'shipref') then 
+			cDateCreated = getDateTime(xPtOrig.adddt, crValidAccounts.TimeConvToUTC)
+			cptOrigQty = alltrim(str(xPtOrig.origqty))
+			
+		else seek(xOutship.ship_ref, 'xPtOrig', 'shipref')
+			cDateCreated = getDateTime(xOutship.adddt, crValidAccounts.TimeConvToUTC)
+			cptOrigQty = '0'
+			
+		endif seek(xOutship.ship_ref, 'xPtOrig', 'shipref')
+		
+		** [OUTDET Data]
+		select * from xOutdet where outshipid = xOutship.Outshipid into cursor crDtl
+		nNumOfDtlRec = reccount('crDtl')
+		
+		** [EDITRIGGER Data]
+		if seek(xOutship.ship_ref, 'xEdiTrigger', 'shipref') then 
+			cDateSent = iif(!emptynul(xEdiTrigger.when_proc), getDateTime(xEdiTrigger.when_proc, crValidAccounts.TimeConvToUTC), "")
+			isSmallPack = iif(xEdiTrigger.parcel, '1','0')
+		else seek(xOutship.ship_ref, 'xEdiTrigger', 'shipref')
+			cDateSent = ""
+			isSmallPack = '0'
+		endif seek(xOutship.ship_ref, 'xEdiTrigger', 'shipref')
+		
+		** [Get tracking information from Package]
+		if isSmallPack = '1' then 
+			xsqlexec("select * from shipment where pickticket = '" + xOutship.ship_ref + "'","xShipment",,"wh")
+			if reccount('xShipment') > 0 then 
+				xsqlexec("select * from package where shipmentid = " + transform(xShipment.shipmentid) ,"xPackage",,"wh")
+			endif reccount('xShipment') > 0
+		endif isSmallPack = '1'
+		
+		** Check if this is a cancelled order or not
+		if (xOutship.cancelrts) then 
+			** These are cancelled orders. There are no cartons information 
+			**--facility|--order_number|--cancel_datetime|--order_recv_datetime|--po_number|--cust_id|dc_number|store_number|channel|--ship_to_name|ship_to_addr1|ship_to_addr2|ship_to_addr3|ship_to_city|ship_to_state|ship_to_zip|ship_to_country|mark_for_name|
+			**mark_for_addr1|mark_for_addr2|mark_for_addr3|mark_for_city|mark_for_state|mark_for_zip|mark_for_country|bill_to_name|bill_to_addr1|bill_to_addr2|bill_to_addr3|bill_to_city|bill_to_state|bill_to_zip|bill_to_country|contact|phone|start_date|cancel_date|
+			**cancel_reason|cancel_by|--number_lines|--total_units|edi_orig_ord_data_file_id
+
+			ctotNumbers = alltrim(str(reccount('xOutdet')))
+			calculate sum(origqty) to nQty in 'xOutdet'
+			cqtyTotal = alltrim(str(nQty)) 
+
+			fputs(_cancelOdrFile, cOffice+"|"+transform(xOutship.outshipid)+"|"+getDateTime(xOutship.cancelrtsdt, crValidAccounts.TimeConvToUTC, .F.)+"|"+getDateTime(xOutship.cancelenterdt, crValidAccounts.TimeConvToUTC, .F.)+"|"+;
+					alltrim(xoutship.cnee_ref)+"|"+transform(xOutship.accountid)+"|"+alltrim(xoutship.dcnum)+"|"+alltrim(str(xoutship.storenum))+"|"+alltrim(xoutship.batch_num)+"|"+cleanText(xoutship.name)+"|"+;
+					cleanText(xoutship.address)+"|"+alltrim(xoutship.address2)+"||"+cleanText(xoutship.csz)+"|"+cleanText(xoutship.csz)+"|"+cleanText(xoutship.csz)+"|"+cleanText(xoutship.country)+"|"+alltrim(xoutship.shipfor)+"|"+;
+					cleanText(xoutship.sforaddr1)+"|"+alltrim(xoutship.sforaddr2)+"||"+cleanText(xoutship.sforcsz)+"|"+cleanText(xoutship.sforcsz)+"|"+cleanText(xoutship.sforcsz)+"||||||||||||||||"+;
+					ctotNumbers+"|"+cqtyTotal+"|")
+				
+			** Cartons details
+			select('xOutdet')
+			scan 
+				** [PTDETORIG Data]
+				cptDetOrigQty = iif(seek(xOutdet.style, 'xPtDetOrig', 'style'), alltrim(str(xPtDetOrig.origqty)), '0')
+				cunitcode = getmemodata("xoutdet.printstuff","UOM")
+				
+				** Details output structure
+				**"-order_number|-product_code|upc_code|gtin_number|style|color|size|dim|lbl|-cancel_qty|-uom|-cost|-order_line_number|cust_po_line_number"
+				fputs(_cancelDtlFile, ;
+					  transform(xOutdet.outshipid)+"|NA|"+alltrim(xOutdet.upc)+"||"+alltrim(xOutdet.style)+"|"+alltrim(xOutdet.color)+"|"+alltrim(xOutdet.id)+"|"+alltrim(str(xOutdet.ctncube))+"||"+cptDetOrigQty+"|"+cunitcode+"|0|NA|0")
+			endscan 
+			
+		else (xOutship.cancelrts)
+			** These are regular orders
+			* --facility| --cust_id| --order_number| --customer_order_number| --web_order_number| --ship_datetime| --order_recv_datetime| -allocation_start_date| work_order_id| --po_number| master_bol| bol_number| routing_appt_id|;
+			* routing_date| dc_number| store_number| channel| --ship_to_name| ship_to_addr1| ship_to_addr2| ship_to_addr3| --ship_to_city| --ship_to_state| --ship_to_zip| ship_to_country| mark_for_name| mark_for_addr1| mark_for_addr2| ;
+			* mark_for_addr3| mark_for_city| mark_for_state| mark_for_zip| mark_for_country| client_customer_number| bill_to_name| bill_to_addr1| bill_to_addr2| bill_to_addr3| bill_to_city| bill_to_state| bill_to_zip| bill_to_country| ;
+			* --is_small_parcel| --ship_via_scac| service_level| freight_terms| --start_date| --cancel_date| routing_pickup_appt_date| no_show_flag| --number_lines| --total_qty_ordered| --total_qty_allocated| --total_qty_shipped| ;
+			* --total_ctns_shipped| --order_type {Full Case or Pick Pack}| --order_uom| --total_weight| --total_volume| is_floor_loaded| edi_945_file_id| --edi_945_datetime| ready_datetime
+
+			fputs(_mainFile, cOffice+"|"+transform(xOutship.accountid)+"|"+transform(xOutship.outshipid)+"|"+alltrim(xoutship.ship_ref)+"|NA|"+getDateTime(xoutship.del_date, crValidAccounts.TimeConvToUTC, .f.)+"|"+;
+				   cDateCreated+"|"+getDateTime(xoutship.adddt, crValidAccounts.TimeConvToUTC, .T.)+"|"+alltrim(str(xoutship.Wo_Num))+"|"+alltrim(xoutship.cnee_ref)+"||"+;
+				   alltrim(xoutship.bol_no)+"||"+alltrim(xoutship.appt_num)+"|"+getDateTime(xoutship.routedfor, crValidAccounts.TimeConvToUTC, .T.)+"|"+alltrim(xoutship.dcnum)+"|"+alltrim(str(xoutship.storenum))+"|"+;
+				   alltrim(xoutship.batch_num)+"|"+cleanText(xoutship.name)+"|"+cleanText(xoutship.address)+"|"+alltrim(xoutship.address2)+"||"+cleanText(xoutship.csz)+"|"+cleanText(xoutship.csz)+"|"+cleanText(xoutship.csz)+"|"+;
+				   cleanText(xoutship.country)+"|"+alltrim(xoutship.shipfor)+"|"+alltrim(xoutship.sforaddr1)+"|"+alltrim(xoutship.sforaddr2)+"|||"+cleanText(xoutship.sforcsz)+"|"+cleanText(xoutship.sforcsz)+"|"+;
+				   cleanText(xoutship.sforcsz)+"||||||||||"+ isSmallPack+"|"+alltrim(xoutship.scac)+"|"+alltrim(xoutship.ship_via)+"||"+getDateTime(xoutship.start, crValidAccounts.TimeConvToUTC, .T.)+"|"+;
+				   getDateTime(xoutship.cancel, crValidAccounts.TimeConvToUTC, .T.)+"|"+getDateTime(xoutship.appt, crValidAccounts.TimeConvToUTC, .T.)+"||"+alltrim(str(nNumOfDtlRec))+"|"+cptOrigQty+"|"+alltrim(str(xoutship.origqty))+"|"+;
+				   iif(xoutship.ctnqty > 0, iif(xoutship.qty > 0, alltrim(str(xoutship.ctnqty/xoutship.qty)), '0'), '0')+"|"+alltrim(str(xoutship.ctnqty))+"|"+iif(xoutship.picknpack, 'pick pack', 'full case')+"|NA|"+alltrim(str(xoutship.weight))+"|"+;
+				   alltrim(str(xoutship.cuft))+"|||"+cDateSent+"|"+getDateTime(xoutship.staged, crValidAccounts.TimeConvToUTC)+"|")
+		
+		
+			** Shipment Details information	   
+			select('xOutdet')
+			scan 
+				** [PTDETORIG Data]
+				cptDetOrigQty = iif(seek(xOutdet.style, 'xPtDetOrig', 'style'), alltrim(str(xPtDetOrig.origqty)), '0')
+				
+				** Details output structure
+				* order_number|cust_id|tsi_product_code|upc_code|gtin_number|style|color|size|dim|lbl|lot_number|serial_number|order_qty|alloc_qty|ship_qty|uom|pack_size|retail_prod_id|cost|order_line_number|cust_po_line_number
+				fputs(_detailFile, ;
+					  transform(xOutdet.outshipid)+"|"+transform(xOutship.accountid)+"|NA|"+alltrim(xOutdet.upc)+"||"+alltrim(xOutdet.style)+"|"+alltrim(xOutdet.color)+"|"+alltrim(xOutdet.id)+"|"+alltrim(str(xOutdet.ctncube))+"||0|0|"+;
+					  cptDetOrigQty+"|"+alltrim(str(xOutdet.origqty))+"|0|"+iif(xoutship.picknpack, '1', '0')+"|"+alltrim(iif(xOutdet.pack="ASST", "1", strtran(upper(xOutdet.pack),"PK", "")))+"|0|0|NA|0")
+			endscan 
+		
+			** Cartons informaation 
+			select('xCartons')
+			scan 
+				*-order_number|-facility|-cust_id|-carton_id|-tsi_product_code|-product_code_qty|tracking_number|-case_length|-case_width|-case_height|-case_weight|-small_pkg_charge|return_tracking_number|-order_line_number|cust_po_line_number|lot_number|serial_number
+				fputs(_cartonsFile, transform(xCartons.outshipid)+"|"+cOffice+"|"+transform(xOutship.accountid)+"|"+alltrim(xCartons.UCC)+"|NA|"+transform(xCartons.totqty)+"|"+iif(used('xPackage') and reccount('xPackage') > 0, xPackage.trkNumber, "")+"|"+ ;
+						iif(Emptynul(xCartons.ctndim), '0|0|0', prepareCaseDims(xCartons.ctndim))+"|"+ iif(Emptynul(xCartons.weight), '0', transform(xCartons.weight))+"|0||0|||")
+			endscan 
+
+		endif (xOutship.cancelrts)
+		
+		lAtleastOneRecExported = .T.
+		use in select('xOutdet')
+		use in select('xPtOrig')
+		use in select('xEdiTrigger')
+		use in select('xCartons')
+		use in select('x1Cartons')
+		use in select('xShipment')
+		use in select('xPackage')
+		select('xOutship')
+	endscan 
+	use in select('xOutship')
+select('crValidAccounts')
+endscan && crValidAccounts
+
+fclose(_mainFile)
+fclose(_detailFile)
+fclose(_cartonsFile)
+fclose(_cancelOdrFile)
+fclose(_cancelDtlFile)
+
+if !lAtleastOneRecExported then 
+	** Remove the file if there was not a single record added
+	delete file (cExportFile)
+	delete file (cExportDtlFile)
+	delete file (cExportCTNFile)
+	delete file (cExportCancFile)
+	delete file (cExportCDtlFile)
+	
+else !lAtleastOneRecExported
+	createSecondFile(cExportFile)
+	createSecondFile(cExportDtlFile)
+	createSecondFile(cExportCTNFile)
+	createSecondFile(cExportCancFile)
+	createSecondFile(cExportCDtlFile)
+	
+endif lAtleastOneRecExported
+
+*************************************************************************************************************************************************************************************************
+* Clean up all opened tables
+use in select('crValidAccounts')
+use in select('crExportLog')
+wait clear 
+** [END OF THE SCRIPT] ***************************************************************************************************************************************************************************
+
+
+
+
+*************************************************************************************************************************************************************************************************
+** FUNCTIONS AND PROCEDURES TO HANDLE DATA ******************************************************************************************************************************************************
+*************************************************************************************************************************************************************************************************
+
+****************************************************************************************************************************
+*      DATE: 06.26.2025
+* PROCEDURE: Another file will be created to show that the data has been exported successfully in first file
+*  	 AUTHOR: Ammar S Malik 
+****************************************************************************************************************************
+procedure createSecondFile(cSecondFile)
+	* create another file after the original file has been created
+	_secondFile = Fcreate(cSecondFile+".rdy")
+	Fclose(_secondFile)
+endproc 
+
+****************************************************************************************************************************
+*      DATE: 07.23.2025
+* PROCEDURE: Format Date into Date Time string - Format: YYYY-MM-DD HH:mm:SS UTC Timezone
+*  	 AUTHOR: Ammar S Malik 
+*   DETAILS: Datetime has AM/PM but the PM time is saved in 24 hour block. 
+*			 DTS Start date is November date and DTS End Date is March date. When calclating the range, we will go from 
+*				DTS start date to end of the year and we will see start of the year to end of the day light saving date
+*			 The time will be in 24 hours and AM PM will not be added to the time. I am leaving the calculations in case
+*			 we need to go back to AM/PM 
+****************************************************************************************************************************
+function getDateTime(dDate, cConverter, DateOnly)
+	dDSTStartYear = date(year(date()), 1, 1)
+	dDSTEndYear   = date(year(date()), 12, 31)
+	cretDateTime  = "2000-01-01 00:00:00"
+	
+	if (!emptynul(dDate)) then 
+		if type('dDate') = 'D' then 
+			** Date only. There is no time to use the converter
+			cretDateTime = alltrim(str(year(dDate))) + "-" + padl(alltrim(str(Month(dDate))), 2, '0') + "-" + padl(alltrim(str(Day(dDate))), 2, '0') + " 00:00:00"
+		endif type('dDate') = 'D'
+
+		if type('dDate') = 'T' then
+			** This is DateTime format. We need to convert this to UTC
+			lSetSeconds = set("Seconds")
+			set seconds on 
+			cAmPm = right(alltrim(ttoc(dDate)), 2)
+			dDatePortion = date(year(dDate), Month(dDate), Day(dDate))
+			
+			** Determine/Convert this time to UTC
+			nUTCTimeHour = hour(dDate) + val(cConverter)
+			nUTCTimeHour = iif(nUTCTimeHour < 0, 24-abs(nUTCTimeHour), nUTCTimeHour)
+			if between(dDate, dDSTStartDate, dDSTEndYear) and between(dDate, dDSTStartYear, dDSTEndDate) then 
+				nUTCTimeHour = nUTCTimeHour - 1
+			endif between(dDate, dDSTStartDate, dDSTEndYear) and between(dDate, dDSTStartYear, dDSTEndDate)
+			
+			** Now see if this time is AM or PM
+			if nUTCTimeHour >= 24 then 
+				dDatePortion = dDatePortion + 1
+			endif nUTCTimeHour >= 24
+			
+			if cAmPm = "AM" and nUTCTimeHour >= 12 and nUTCTimeHour < 24 then 
+				dDatePortion = dDatePortion - 1
+			endif cAmPm = "AM" and nUTCTimeHour >= 12 and nUTCTimeHour < 24
+			
+			cAmPm = iif(nUTCTimeHour >= 24, "AM", iif(nUTCTimeHour > 12, "PM", "AM"))
+			nUTCTimeHour = iif(nUTCTimeHour = 24, 0, iif(nUTCTimeHour > 24, nUTCTimeHour - 24, iif(nUTCTimeHour > 12, nUTCTimeHour - 12, nUTCTimeHour)))
+			cTime = alltrim(substr(ttoc(dDate), 12))
+			** Rather than providing AM/PM, we will make it a 24 hour time and ignore. Remove line below if we need AM/PM
+			nUTCTimeHour = nUTCTimeHour + iif(cAmPm = 'PM', 12, 0)
+			cretDateTime = alltrim(str(year(dDatePortion))) + "-" + padl(alltrim(str(Month(dDatePortion))), 2, '0') + "-" + padl(alltrim(str(Day(dDatePortion))), 2, '0') + " " + ;
+						   padl(alltrim(str(nUTCTimeHour)), 2, '0') + ":" + substr(cTime, 4, 2) + ":" + substr(cTime, 7, 2) 
+						   
+		   **Remove this line to add AmPm  + " " + cAmPm	&& Add this to the line above to include AM?PM
+			set seconds &lSetSeconds
+		endif type('dDate') = 'D'
+	endif (!emptynul(dDate))
+	
+	** If only Date is needed, then the format should be YYYY-MM-DD
+	return iif(DateOnly, left(alltrim(cretDateTime), 10), cretDateTime)
+endfunc
+
+****************************************************************************************************************************
+*      DATE: 07.09.2025
+* PROCEDURE: Log file to access log date to see what date/time a file was created last so ONLY updted information is sent 
+*			 out to the data lake.
+*  	 AUTHOR: Ammar S Malik 
+****************************************************************************************************************************
+procedure readLogFile(cLogFile)
+	create cursor crExportLog (logTopic C(30), logDate t)
+	index on logTopic tag logfor
+	
+	if !file(cLogFile) then 
+		xlogfile = fcreate(cLogFile)
+		fputs(xlogfile, "logTopic,logDate")
+		fclose(xlogfile)
+	endif file(cLogFile)
+	append from (cLogFile) csv 
+endproc
+
+function getLastUpdateDate(cTopic)
+	retdate = {}
+	if seek(cTopic, 'crExportLog', 'logfor') then 
+		retdate = crExportLog.logdate
+	endif seek(cTopic, 'crExportLog', 'logfor')
+	return retdate 
+endfunc 
+
+procedure updateLastUpdateDate(cTopic)
+	if !seek(cTopic, 'crExportLog', 'logfor') then 
+		insert into crExportLog (logTopic, logDate) values (cTopic, datetime())
+	endif seek(cTopic, 'crExportLog', 'logfor')
+	replace logDate with datetime() in 'crExportLog'
+endproc 
+
+procedure updateLogFile(cLogFile)
+	select('crExportLog')
+	xSafety = set("Safety")
+	set safety off
+	copy to cLogFile csv 
+	set safety &xSafety
+endproc
+
+function cleanText(cTextToClean)
+	cRetText = strtran(strtran(strtran(strtran(alltrim(cTextToClean), '"', ''), "'", ""), chr(10), ""), ",", "")
+	if len(alltrim(cRetText)) = 0 then 
+		** This is an empty string. send back a NA
+		cRetText = "NA"
+	endif len(alltrim(cRetText)) = 0
+	return alltrim(cRetText)
+endfunc 
+
+function prepareCaseDims(cTextToDecode)
+	if (alltrim(cTextToDecode) = '--') then 
+		return "0|0|0"	&& 9 -7 -5   as a sample
+	endif 
+	if (occurs('-',cTextToDecode) = 2) then 
+		return alltrim(strtran(cTextToDecode, '-', '|'))
+	endif 
+	return cTextToDecode
+endfunc 
