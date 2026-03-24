@@ -1,4 +1,5 @@
 ﻿using DataAccessLibrary.Data;
+using DataAccessLibrary.Logging;
 using System.Data;
 
 namespace Ut_DataAccessLibrary;
@@ -8,6 +9,7 @@ public class UnitTestDataAccess
     [Fact]
     public void Test_ConnectionString()
     {
+        LoggingService.Initialize(@"f:\ammar\");
         string ut_connection = "Server=TGFNJSQL01;Database=WH;Trusted_Connection=True;TrustServerCertificate=True";
 
         SqlServerClient client = new SqlServerClient(ut_connection);
