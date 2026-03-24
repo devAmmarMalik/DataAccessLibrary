@@ -1,4 +1,6 @@
 <Solution>
   <Project Path="DataAccessLibrary/DataAccessLibrary.csproj" />
-  <Project Path="Ut_DataAccessLibrary/Ut_DataAccessLibrary.csproj" Id="2d947869-fdbc-4adb-985d-f89e8c472cbc" />
+  <Project Path="Ut_DataAccessLibrary/Ut_DataAccessLibrary.csproj" Id="2d947869-fdbc-4adb-985d-f89e8c472cbc">
+    <Build Solution="Debug|*" Project="false" />
+  </Project>
 </Solution>
