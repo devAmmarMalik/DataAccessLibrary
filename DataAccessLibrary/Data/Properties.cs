@@ -15,10 +15,12 @@ public class Properties
     public DateTime DSTStart { get; set; } = DateTime.Parse(DateTime.Now.Year + "-11-02");
     public DateTime DSTEnd { get; set; } = DateTime.Parse(DateTime.Now.Year + "-3-9");
     public bool ExportToFiles { get; set; } = true;
+    public string _filterString = string.Empty;
 
     public Properties()
     {
         InitializeDates();
+        _filterString = $" (adddt >= '{DateFrom.Date}' or updatedt >= '{DateFrom.Date}') and (adddt <= '{DateTo.Date}' or updatedt <= '{DateTo.Date}') ";
     }
 
     private void InitializeDates()
