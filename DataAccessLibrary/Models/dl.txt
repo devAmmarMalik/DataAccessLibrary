@@ -586,3 +586,58 @@ function prepareCaseDims(cTextToDecode)
 	endif 
 	return cTextToDecode
 endfunc 
+
+
+function getmemodata(pmemofld,pckey,xremove,xreturnblank,xdelimiter,xoccurrence)
+
+if type("xoccurrence")="L"
+	xoccurrence=1
+endif
+
+**xreturnblank - return blank if not found, as opposed to "NA"
+local lnend,lcthiskey
+local lapt(1,1)
+
+if xremove and !empty(xdelimiter)
+	messagebox("Cannot send a 'remove' action with a delimiter specified! Must use '*'",16,"Invalid")
+	return .f.
+endif
+
+xgetoccurrence=0
+
+xdelimiter=iif(empty(xdelimiter),"*",xdelimiter)
+nLength=alines(laPt,&pMemofld,4,CHR(10),chr(13))
+
+for xmemoline = 1 to nLength
+  lnend= at(xdelimiter,laPt[xmemoline])
+  if lnend > 0
+    lcThiskey =substr(laPt[xmemoline],1,lnEnd-1)
+    if pcKey==lcthiskey
+	  if !xremove
+			xgetoccurrence=xgetoccurrence+1
+			if xgetoccurrence=xoccurrence
+		      return substr(laPt[xmemoline],lnEnd+1)
+			else
+				loop
+			endif
+	  else
+		**not sure if has chr(13) or chr(13)+chr(10) so do both - mvw 03/11/11
+		xreplace=pckey+"*"+substr(laPt[xmemoline],lnEnd+1)+chr(13)+chr(10)
+		replace &pMemofld with strtran(&pMemofld,xreplace,"")
+		xreplace=pckey+"*"+substr(laPt[xmemoline],lnEnd+1)+chr(13)
+		replace &pMemofld with strtran(&pMemofld,xreplace,"")
+		**added just chr(10) and without chr(13) or chr(10) - mvw 09/22/14
+		xreplace=pckey+"*"+substr(laPt[xmemoline],lnEnd+1)+chr(10)
+		replace &pMemofld with strtran(&pMemofld,xreplace,"")
+		xreplace=pckey+"*"+substr(laPt[xmemoline],lnEnd+1)
+		replace &pMemofld with strtran(&pMemofld,xreplace,"")
+		return .t.
+	  endif
+    endif
+  endif
+next
+
+**return blank (not "NA") if xreturnblank = .t. - mvw 10/26/12
+xretval=iif(xreturnblank,"","NA")
+return iif(!xremove,xretval,.f.)
+endfunc
