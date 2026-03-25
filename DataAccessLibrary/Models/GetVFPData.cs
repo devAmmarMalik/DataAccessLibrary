@@ -11,6 +11,8 @@ public class GetVFPData
 {
     private Properties _properties { get; set; }
     private OutputFiles _outputFiles { get; set; }
+    private DataTable _tabActiveAccounts = new DataTable("ActiveAccounts");
+
 
     public void SetProperties(Properties Properties, OutputFiles OutputFiles)
     {
@@ -27,11 +29,13 @@ public class GetVFPData
 
         LoggingService.Initialize(@"f:\ammar\");
         int customerCount = ExportCustomers();
+        int ProductCount = ExportProductsMaster();
     }
 
-    #region get accounts data
+    #region Get Accounts Data and create two files
     private int ExportCustomers()
     {
+        LoggingService.Logger.Information("Exporting Customers");
         string ut_connCustomer = "Server=TGFNJSQL01;Database=QQ;Trusted_Connection=True;TrustServerCertificate=True";
         SqlServerClient CustomerClient = new SqlServerClient(ut_connCustomer);
         DataTable _ActiveAccs = CustomerClient.ExecuteQuery("select *, space(30) as Officeloc, space(10) as TimeConvToUTC from account where inactive = 0 order by accountid");
@@ -62,7 +66,7 @@ public class GetVFPData
             row["TimeConvToUTC"] = match == default ? "0" : match.Offset;
         }
 
-        if (_ActiveAccs.Rows.Count > 0)
+        if (_ActiveAccs.Rows.Count > 0 && _properties.ExportToFiles)
         {
             string filePath = $"{_outputFiles.ExportTo?.Trim()}{_outputFiles.CustomerFilename}.txt";
 
@@ -93,13 +97,139 @@ public class GetVFPData
                 }
             }
 
-            filePath = _outputFiles.CustomerFilename + ".rdy";
-
-            using (var writer = new StreamWriter(filePath, false))
-            {
-            }
+            CreateRDYFile($"{_outputFiles.ExportTo?.Trim()}{_outputFiles.CustomerFilename}.rdy");
         }
+
+        _ActiveAccs.AsEnumerable()
+            .ToList()
+            .ForEach(row =>
+            {
+                _tabActiveAccounts.Rows.Add(
+                    row.Field<int?>("accountid") ?? 0,
+                    row["Officeloc"]?.ToString()?.Trim() ?? "",
+                    row["TimeConvToUTC"]?.ToString()?.Trim() ?? ""
+                );
+            });
+
+        LoggingService.Logger.Information($"Customers exported with {_tabActiveAccounts.Rows.Count} accounts");
+
         return _ActiveAccs.Rows.Count;
     }
     #endregion
+
+    #region Get Products Master and create two files
+    private int ExportProductsMaster()
+    {
+        DataTable dtOutput = new DataTable();
+        //_filterString
+        LoggingService.Logger.Information("Exporting Product Master");
+        string filePath = $"{_outputFiles.ExportTo?.Trim()}{_outputFiles.CustomerFilename}.txt";
+        using (SqlServerClient ProductMasterClient = new SqlServerClient("Server=TGFNJSQL01;Database=WH;Trusted_Connection=True;TrustServerCertificate=True"))
+        {
+            foreach (DataRow Account in _tabActiveAccounts.Rows)
+            {
+                dtOutput = ProductMasterClient.ExecuteQuery($"select * from upcmast where accountid = {Account.Field<int?>("accountid")} and {_properties._filterString} ");
+                using (var writer = new StreamWriter(filePath, false))
+                {
+                    // Header information for the output file
+                    writer.WriteLine("facility|system_id|cust_id|tsi_product_code|upc_code|description|customer_product_code|style|color|size|dim|lbl|lot_tracked|serial_tracked|category|product_class|product_type|product_group|"+
+                                     "cost|nmfc_code|nmfc_class_code|ppk_indicator|master_pack_qty|inner_pack_qty|sub_inner_pack_qty|country_of_origin|case_length|case_width|case_height|case_weight|unit_length|unit_width|"+
+                                     "unit_height|unit_weight|is_supply");
+
+                    foreach (DataRow row in dtOutput.Rows)
+                    {
+                        string cOffice = TrimSafe(Account["officeLoc"]);
+
+                        string lclength = NormalizeDimension(GetMemoData(row["info"].ToString(), "LENGTH"));
+                        string lcwidth = NormalizeDimension(GetMemoData(row["info"].ToString(), "WIDTH"));
+                        string lcheight = NormalizeDimension(GetMemoData(row["info"].ToString(), "HEIGHT"));
+
+                        string lcDescrip = CleanText(row["descrip"]);
+
+                        string line =
+                            $"{cOffice}|{ToStr(row["accountid"])}|{ToStr(row["accountid"])}|NA|" +
+                            $"{TrimSafe(row["upc"])}|{lcDescrip}||{TrimSafe(row["style"])}|" +
+                            $"{TrimSafe(row["color"])}|{TrimSafe(row["id"])}|{ToStr(row["cube"])}||0|0|||" +
+                            $"{TrimSafe(row["itemtype"])}||0|||0|0|0|0||" +
+                            $"{lclength}|{lcwidth}|{lcheight}|{ToStr(row["weight"])}|0|0|0|0|0";
+
+                        writer.WriteLine(line);
+                    }
+                }
+            }
+        }
+
+
+        return dtOutput.Rows.Count;
+    }
+    #endregion
+
+    #region Helper Methods
+    #region Create a second empty file RDY
+    private void CreateRDYFile(string fileToCreate) {
+        using (var writer = new StreamWriter(fileToCreate, false))
+        {
+        }
+    }
+
+    #endregion
+
+    #region Equivalent of emptynul()
+    private bool IsEmptyNull(string val)
+    {
+        return string.IsNullOrWhiteSpace(val);
+    }
+    #endregion
+
+    #region getmemodata()
+    private string GetMemoData(string memoText, string pcKey)
+    {
+        MemoResult getMemo = new MemoResult();
+        return getMemo.GetMemoData(memoText, pcKey).Value;
+    }
+    #endregion
+
+    #region cleanText
+    private string CleanText(object cTextToClean)
+    {
+        if (cTextToClean == null)
+            return "NA";
+
+        string cRetText = cTextToClean.ToString().Trim();
+
+        cRetText = cRetText
+            .Replace("\"", "")   // remove double quotes
+            .Replace("'", "")    // remove single quotes
+            .Replace("\n", "")   // remove LF (chr(10))
+            .Replace(",", "");   // remove commas
+
+        cRetText = cRetText.Trim();
+
+        // If empty after cleaning → return "NA"
+        if (cRetText.Length == 0)
+            return "NA";
+
+        return cRetText;
+    }
+    #endregion
+
+    private string TrimSafe(object value)
+    {
+        return value == null ? "" : value.ToString().Trim();
+    }
+
+    private string ToStr(object value)
+    {
+        return value == null ? "" : Convert.ToString(value)?.Trim() ?? "";
+    }
+
+    private string NormalizeDimension(string val)
+    {
+        if (string.IsNullOrWhiteSpace(val) || val == "NA")
+            return "0";
+
+        return val.Trim();
+    }
+    #endregion
+
 }

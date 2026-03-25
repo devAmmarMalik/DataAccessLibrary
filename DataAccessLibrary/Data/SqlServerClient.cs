@@ -4,17 +4,24 @@ using DataAccessLibrary.Logging;
 
 namespace DataAccessLibrary.Data;
 
-public class SqlServerClient
+public class SqlServerClient : IDisposable
 {
     private string _connectionString;
+
     public SqlServerClient(string connectionString)
     {
         _connectionString = connectionString;
     }
 
+    public void Dispose()
+    {
+        // Nothing to dispose (currently)
+    }
+
     public DataTable ExecuteQuery(string query)
-    { 
+    {
         DataTable retTable = new DataTable();
+
         try
         {
             using SqlConnection connection = new SqlConnection(_connectionString);
@@ -24,9 +31,11 @@ public class SqlServerClient
 
             using SqlDataReader read = command.ExecuteReader();
             retTable.Load(read);
+
             LoggingService.Logger.Information($"Query Successful with {retTable.Rows.Count} rows");
         }
-        catch (Exception ex) {
+        catch (Exception ex)
+        {
             LoggingService.Logger.Error(ex, "There was an issue with the query");
         }
 
