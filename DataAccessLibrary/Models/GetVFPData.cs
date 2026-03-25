@@ -140,9 +140,9 @@ public class GetVFPData
                     {
                         string cOffice = TrimSafe(Account["officeLoc"]);
 
-                        string lclength = NormalizeDimension(GetMemoData("info", "LENGTH"));
-                        string lcwidth = NormalizeDimension(GetMemoData("info", "WIDTH"));
-                        string lcheight = NormalizeDimension(GetMemoData("info", "HEIGHT"));
+                        string lclength = NormalizeDimension(GetMemoData(row["info"].ToString(), "LENGTH"));
+                        string lcwidth = NormalizeDimension(GetMemoData(row["info"].ToString(), "WIDTH"));
+                        string lcheight = NormalizeDimension(GetMemoData(row["info"].ToString(), "HEIGHT"));
 
                         string lcDescrip = CleanText(row["descrip"]);
 
@@ -182,10 +182,10 @@ public class GetVFPData
     #endregion
 
     #region getmemodata()
-    private string GetMemoData(string table, string field)
+    private string GetMemoData(string memoText, string pcKey)
     {
-        // TODO: implement actual logic (DB/file/memo lookup)
-        return "";
+        MemoResult getMemo = new MemoResult();
+        return getMemo.GetMemoData(memoText, pcKey).Value;
     }
     #endregion
 
