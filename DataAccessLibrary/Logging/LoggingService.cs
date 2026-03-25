@@ -6,12 +6,12 @@ public static class LoggingService
 {
     public static Serilog.ILogger Logger { get; private set; }
 
-    public static void Initialize(string logFilePath = "logs/log-.txt")
+    public static void Initialize(string logFilePath)
     {
         Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .WriteTo.Console()
-            .WriteTo.File(logFilePath, rollingInterval: RollingInterval.Day)
+            .WriteTo.File($"{logFilePath.Trim()}log-.txt", rollingInterval: RollingInterval.Hour)
             .CreateLogger();
     }
 }

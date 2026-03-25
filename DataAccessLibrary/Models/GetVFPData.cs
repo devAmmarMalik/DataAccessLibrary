@@ -1,9 +1,7 @@
 ﻿using DataAccessLibrary.Data;
 using DataAccessLibrary.Logging;
-using System;
-using System.Collections.Generic;
+using Microsoft.Data.SqlClient;
 using System.Data;
-using System.Text;
 
 namespace DataAccessLibrary.Models;
 
@@ -11,13 +9,14 @@ public class GetVFPData
 {
     private Properties _properties { get; set; }
     private OutputFiles _outputFiles { get; set; }
-    private DataTable _tabActiveAccounts = new DataTable("ActiveAccounts");
-
+    private DataTable _tabActiveAccounts = new DataTable();
 
     public void SetProperties(Properties Properties, OutputFiles OutputFiles)
     {
         _properties = Properties;
         _outputFiles = OutputFiles;
+        ActiveAccounts accSetup = new ActiveAccounts();
+        _tabActiveAccounts = accSetup.AccountsTable();
     }
 
     public void ReadData()
@@ -27,9 +26,13 @@ public class GetVFPData
             throw new InvalidOperationException("Properties must be set before reading data.");
         }
 
-        LoggingService.Initialize(@"f:\ammar\");
+        LoggingService.Initialize(_outputFiles.ExportTo?.Trim());
         int customerCount = ExportCustomers();
-        int ProductCount = ExportProductsMaster();
+
+        if (customerCount > 0)
+        {
+            int ProductCount = ExportProductsMaster();
+        }
     }
 
     #region Get Accounts Data and create two files
@@ -93,27 +96,18 @@ public class GetVFPData
                             $"{cOffice}|{accountId}||||{accountId}|{acctName}|{address}|||{city}|{state}|{zip}|||";
 
                         writer.WriteLine(line);
+                        _tabActiveAccounts.Rows.Add(
+                                row.Field<int?>("accountid") ?? 0,
+                                row["Officeloc"]?.ToString()?.Trim() ?? "",
+                                row["TimeConvToUTC"]?.ToString()?.Trim() ?? "");
                     }
                 }
             }
 
             CreateRDYFile($"{_outputFiles.ExportTo?.Trim()}{_outputFiles.CustomerFilename}.rdy");
         }
-
-        _ActiveAccs.AsEnumerable()
-            .ToList()
-            .ForEach(row =>
-            {
-                _tabActiveAccounts.Rows.Add(
-                    row.Field<int?>("accountid") ?? 0,
-                    row["Officeloc"]?.ToString()?.Trim() ?? "",
-                    row["TimeConvToUTC"]?.ToString()?.Trim() ?? ""
-                );
-            });
-
-        LoggingService.Logger.Information($"Customers exported with {_tabActiveAccounts.Rows.Count} accounts");
-
-        return _ActiveAccs.Rows.Count;
+        LoggingService.Logger.Information($"Customers exported with {_tabActiveAccounts.Rows.Count} active accounts from {_ActiveAccs.Rows.Count} total accounts processed");
+        return _tabActiveAccounts.Rows.Count;
     }
     #endregion
 
@@ -123,43 +117,48 @@ public class GetVFPData
         DataTable dtOutput = new DataTable();
         //_filterString
         LoggingService.Logger.Information("Exporting Product Master");
-        string filePath = $"{_outputFiles.ExportTo?.Trim()}{_outputFiles.CustomerFilename}.txt";
+        string filePath = $"{_outputFiles.ExportTo?.Trim()}{_outputFiles.ProductFilename}.txt";
         using (SqlServerClient ProductMasterClient = new SqlServerClient("Server=TGFNJSQL01;Database=WH;Trusted_Connection=True;TrustServerCertificate=True"))
         {
-            foreach (DataRow Account in _tabActiveAccounts.Rows)
+            using (var writer = new StreamWriter(filePath, false))
             {
-                dtOutput = ProductMasterClient.ExecuteQuery($"select * from upcmast where accountid = {Account.Field<int?>("accountid")} and {_properties._filterString} ");
-                using (var writer = new StreamWriter(filePath, false))
+                // Header information for the output file
+                writer.WriteLine("facility|system_id|cust_id|tsi_product_code|upc_code|description|customer_product_code|style|color|size|dim|lbl|lot_tracked|serial_tracked|category|product_class|product_type|product_group|" +
+                                 "cost|nmfc_code|nmfc_class_code|ppk_indicator|master_pack_qty|inner_pack_qty|sub_inner_pack_qty|country_of_origin|case_length|case_width|case_height|case_weight|unit_length|unit_width|" +
+                                 "unit_height|unit_weight|is_supply");
+
+                foreach (DataRow Account in _tabActiveAccounts.Rows)
                 {
-                    // Header information for the output file
-                    writer.WriteLine("facility|system_id|cust_id|tsi_product_code|upc_code|description|customer_product_code|style|color|size|dim|lbl|lot_tracked|serial_tracked|category|product_class|product_type|product_group|"+
-                                     "cost|nmfc_code|nmfc_class_code|ppk_indicator|master_pack_qty|inner_pack_qty|sub_inner_pack_qty|country_of_origin|case_length|case_width|case_height|case_weight|unit_length|unit_width|"+
-                                     "unit_height|unit_weight|is_supply");
-
-                    foreach (DataRow row in dtOutput.Rows)
+                    dtOutput = ProductMasterClient.ExecuteQuery($"select * from upcmast where accountid = {Account.Field<int?>("accountid")} and {_properties._filterString} ");
+                    if (dtOutput.Rows.Count > 0 && _properties.ExportToFiles)
                     {
-                        string cOffice = TrimSafe(Account["officeLoc"]);
+                        foreach (DataRow row in dtOutput.Rows)
+                        {
+                            string cOffice = TrimSafe(Account["officeLoc"]);
 
-                        string lclength = NormalizeDimension(GetMemoData(row["info"].ToString(), "LENGTH"));
-                        string lcwidth = NormalizeDimension(GetMemoData(row["info"].ToString(), "WIDTH"));
-                        string lcheight = NormalizeDimension(GetMemoData(row["info"].ToString(), "HEIGHT"));
+                            string lclength = NormalizeDimension(GetMemoData(row["info"].ToString(), "LENGTH"));
+                            string lcwidth = NormalizeDimension(GetMemoData(row["info"].ToString(), "WIDTH"));
+                            string lcheight = NormalizeDimension(GetMemoData(row["info"].ToString(), "HEIGHT"));
 
-                        string lcDescrip = CleanText(row["descrip"]);
+                            string lcDescrip = CleanText(row["descrip"]);
 
-                        string line =
-                            $"{cOffice}|{ToStr(row["accountid"])}|{ToStr(row["accountid"])}|NA|" +
-                            $"{TrimSafe(row["upc"])}|{lcDescrip}||{TrimSafe(row["style"])}|" +
-                            $"{TrimSafe(row["color"])}|{TrimSafe(row["id"])}|{ToStr(row["cube"])}||0|0|||" +
-                            $"{TrimSafe(row["itemtype"])}||0|||0|0|0|0||" +
-                            $"{lclength}|{lcwidth}|{lcheight}|{ToStr(row["weight"])}|0|0|0|0|0";
+                            string line =
+                                $"{cOffice}|{ToStr(row["accountid"])}|{ToStr(row["accountid"])}|NA|" +
+                                $"{TrimSafe(row["upc"])}|{lcDescrip}||{TrimSafe(row["style"])}|" +
+                                $"{TrimSafe(row["color"])}|{TrimSafe(row["id"])}|{ToStr(row["cube"])}||0|0|||" +
+                                $"{TrimSafe(row["itemtype"])}||0|||0|0|0|0||" +
+                                $"{lclength}|{lcwidth}|{lcheight}|{ToStr(row["weight"])}|0|0|0|0|0";
 
-                        writer.WriteLine(line);
+                            writer.WriteLine(line);
+                        }
+
                     }
                 }
             }
+            CreateRDYFile($"{_outputFiles.ExportTo?.Trim()}{_outputFiles.ProductFilename}.rdy");
         }
 
-
+        LoggingService.Logger.Information("Product Master exported with {dtOutput.Rows.Count} products");
         return dtOutput.Rows.Count;
     }
     #endregion
