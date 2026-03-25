@@ -6,7 +6,7 @@ namespace DataAccessLibrary.Data;
 
 public class SqlServerClient
 {
-    private readonly string _connectionString;
+    private string _connectionString;
     public SqlServerClient(string connectionString)
     {
         _connectionString = connectionString;
