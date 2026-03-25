@@ -17,12 +17,18 @@ public class ut_Accounts
 
         Properties properties = new Properties
         {
+            NoOfDaysPrior = 10,
+            UseDataRange = true,
+            ExportToFiles = true,
             DateFrom = DateTime.Parse("2024-01-01"),
             DateTo = DateTime.Parse("2024-12-31"),
         };
 
+        properties.Init();
+
         GetVFPData getVFPData = new GetVFPData();
         getVFPData.SetProperties(properties, new OutputFiles());
+
         getVFPData.ReadData();
 
         Assert.Equal(1, 1);
