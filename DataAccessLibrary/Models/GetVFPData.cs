@@ -26,16 +26,17 @@ public class GetVFPData
         }
 
         LoggingService.Initialize(@"f:\ammar\");
-        string ut_connection = "Server=TGFNJSQL01;Database=WH;Trusted_Connection=True;TrustServerCertificate=True";
-        SqlServerClient client = new SqlServerClient(ut_connection);
-
-        int customerCount = ExportCustomers(client);
+        int customerCount = ExportCustomers();
     }
 
     #region get accounts data
-    private int ExportCustomers(SqlServerClient client)
+    private int ExportCustomers()
     {
-        DataTable _ActiveAccs = client.ExecuteQuery("select *, space(30) as Officeloc, space(10) as TimeConvToUTC from account where inactive = 0 order by accountid ");
+        string ut_connCustomer = "Server=TGFNJSQL01;Database=QQ;Trusted_Connection=True;TrustServerCertificate=True";
+        SqlServerClient CustomerClient = new SqlServerClient(ut_connCustomer);
+        DataTable _ActiveAccs = CustomerClient.ExecuteQuery("select *, space(30) as Officeloc, space(10) as TimeConvToUTC from account where inactive = 0 order by accountid");
+        _ActiveAccs.Columns["Officeloc"]?.ReadOnly = false;
+        _ActiveAccs.Columns["TimeConvToUTC"]?.ReadOnly = false;
 
         var officeMap = new List<(Func<DataRow, bool> Condition, string Office, string Offset)>
         {
@@ -63,7 +64,7 @@ public class GetVFPData
 
         if (_ActiveAccs.Rows.Count > 0)
         {
-            string filePath = _outputFiles.CustomerFilename + ".txt";
+            string filePath = $"{_outputFiles.ExportTo?.Trim()}{_outputFiles.CustomerFilename}.txt";
 
             using (var writer = new StreamWriter(filePath, false))
             {

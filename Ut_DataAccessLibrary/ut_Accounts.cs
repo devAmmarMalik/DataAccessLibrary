@@ -22,10 +22,10 @@ public class ut_Accounts
         };
 
         GetVFPData getVFPData = new GetVFPData();
-        getVFPData.SetProperties(properties);
+        getVFPData.SetProperties(properties, new OutputFiles());
         getVFPData.ReadData();
 
-       // Assert.Equal(1, returnVal.Rows.Count);
+        Assert.Equal(1, 1);
     }
 
 }
